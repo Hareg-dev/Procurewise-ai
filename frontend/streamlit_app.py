@@ -55,9 +55,9 @@ def main():
         try:
             llm_response = requests.get("http://localhost:8000/llm/health", timeout=3)
             if llm_response.status_code == 200 and llm_response.json().get("success"):
-                st.success("🟢 LLM Online")
+                st.success("🟢 Phi3 Online")
             else:
-                st.warning("🟡 LLM Offline")
+                st.warning("🟡 Phi3 Offline")
         except:
             st.warning("🟡 LLM Offline")
     
@@ -231,12 +231,66 @@ def show_single_prediction():
 
 def show_batch_prediction():
     st.markdown("# 📊 Batch Risk Prediction")
-    st.info("⚠️ Backend API connection required for batch processing.")
     
     uploaded_file = st.file_uploader("Choose a CSV file", type=['csv'])
     
     if uploaded_file:
-        st.success("✅ File uploaded! (API integration required for processing)")
+        if st.button("🚀 Process Batch"):
+            try:
+                import requests
+                with st.spinner("Processing batch prediction..."):
+                    files = {"file": (uploaded_file.name, uploaded_file.getvalue(), "text/csv")}
+                    headers = {"X-Session-ID": "streamlit-batch-session"}
+                    
+                    response = requests.post(
+                        "http://localhost:8000/predict/batch",
+                        files=files,
+                        headers=headers,
+                        timeout=60
+                    )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    
+                    st.success("✅ Batch processing completed!")
+                    
+                    # Display summary
+                    col1, col2, col3, col4 = st.columns(4)
+                    
+                    with col1:
+                        st.metric("Total Records", result["total_records"])
+                    
+                    with col2:
+                        st.metric("Successful", result["successful_predictions"])
+                    
+                    with col3:
+                        st.metric("Failed", result["failed_predictions"])
+                    
+                    with col4:
+                        st.metric("Avg Confidence", f"{result['avg_confidence']:.1%}")
+                    
+                    # Risk distribution
+                    st.markdown("### 🎯 Risk Distribution")
+                    risk_dist = result["risk_distribution"]
+                    
+                    risk_col1, risk_col2, risk_col3 = st.columns(3)
+                    
+                    with risk_col1:
+                        st.metric("🔴 High Risk", risk_dist["high"])
+                    
+                    with risk_col2:
+                        st.metric("🟡 Medium Risk", risk_dist["medium"])
+                    
+                    with risk_col3:
+                        st.metric("🟢 Low Risk", risk_dist["low"])
+                        
+                else:
+                    st.error(f"❌ Batch processing failed: HTTP {response.status_code}")
+                    
+            except requests.exceptions.ConnectionError:
+                st.error("❌ Cannot connect to backend API. Please ensure the FastAPI server is running on localhost:8000")
+            except Exception as e:
+                st.error(f"❌ Error: {str(e)}")
 
 def show_analysis():
     st.markdown("# 📈 Analytics Dashboard")
@@ -255,26 +309,54 @@ def show_analysis():
 
 def show_recommendations():
     st.markdown("# 💡 AI Recommendations")
-    st.markdown("""
-    <div style="text-align: center; padding: 3rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 15px; color: white;">
-        <h2>🤖 AI-Powered Recommendations</h2>
-        <h3>Coming Soon in Phase 4!</h3>
-        <p style="font-size: 1.2em; margin: 2rem 0;">
-            Intelligent procurement insights powered by Mistral 7B LLM
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("*Powered by Phi3 Mini*")
+    
+    st.markdown("Get AI-powered procurement recommendations based on your risk predictions.")
+    
+    # Sample data for demonstration
+    if st.button("🎯 Generate Sample Recommendations"):
+        sample_data = {
+            "prediction_result": {"prediction": "high", "confidence": 0.85},
+            "shap_explanation": {"top_negative": {"payment_delay": -0.3, "delivery_score": -0.2}},
+            "input_data": {"industry": "Manufacturing", "contract_value": 500000}
+        }
+        
+        try:
+            import requests
+            with st.spinner("Generating AI recommendations..."):
+                response = requests.post(
+                    "http://localhost:8000/llm/recommendations",
+                    json=sample_data,
+                    timeout=30
+                )
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get("success"):
+                    recommendations = result["data"]
+                    
+                    st.success("✅ Recommendations generated!")
+                    st.markdown("### 🤖 AI Recommendations:")
+                    st.markdown(recommendations.get("full_response", "No recommendations available"))
+                else:
+                    st.error("Failed to generate recommendations")
+            else:
+                st.error(f"API Error: {response.status_code}")
+                
+        except Exception as e:
+            st.error(f"Error: {str(e)}")
+    
+    st.markdown("---")
+    st.info("💡 **Tip**: Make a prediction first, then come here for personalized recommendations based on your specific supplier data.")
 
 def show_chat():
     st.markdown("# 💬 AI Chat Assistant")
-    st.markdown("*Powered by Mistral 7B - Coming in Phase 4*")
-    
-    st.info("🚧 **Demo Mode**: Full LLM integration with Mistral 7B will be available in Phase 4!")
+    st.markdown("*Powered by Phi3 Mini*")
     
     # Simple chat interface
     if "messages" not in st.session_state:
         st.session_state.messages = [
-            {"role": "assistant", "content": "Hello! I'm your AI procurement assistant. How can I help you today?"}
+            {"role": "assistant", "content": "Hello! I'm your AI procurement assistant powered by Phi3. How can I help you today?"}
         ]
     
     for message in st.session_state.messages:
@@ -287,9 +369,37 @@ def show_chat():
             st.write(prompt)
         
         with st.chat_message("assistant"):
-            response = "Thanks for your question! Full AI chat functionality will be available in Phase 4 with Mistral LLM integration."
-            st.write(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
+            try:
+                import requests
+                with st.spinner("🤖 Thinking..."):
+                    chat_data = {
+                        "message": prompt,
+                        "session_id": "streamlit-chat-session",
+                        "include_context": True
+                    }
+                    
+                    response = requests.post(
+                        "http://localhost:8000/llm/chat",
+                        json=chat_data,
+                        timeout=30
+                    )
+                
+                if response.status_code == 200:
+                    result = response.json()
+                    if result.get("success"):
+                        ai_response = result["data"]["response"]
+                    else:
+                        ai_response = f"I'm having trouble processing your request. Error: {result.get('error', 'Unknown error')}"
+                else:
+                    ai_response = "I'm currently unable to process your request. Please check if the backend is running."
+                    
+            except requests.exceptions.ConnectionError:
+                ai_response = "I can't connect to my AI backend. Please ensure the FastAPI server is running."
+            except Exception as e:
+                ai_response = f"I encountered an error: {str(e)}"
+            
+            st.write(ai_response)
+            st.session_state.messages.append({"role": "assistant", "content": ai_response})
 
 if __name__ == "__main__":
     main()

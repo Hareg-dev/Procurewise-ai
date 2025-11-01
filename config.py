@@ -64,4 +64,4 @@ STREAMLIT_PORT = 8501
 
 # Ollama settings
 OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "mistral:7b"
+OLLAMA_MODEL = "phi3:mini"

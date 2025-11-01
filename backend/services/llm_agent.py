@@ -12,20 +12,19 @@ class ProcurementLLMAgent:
     
     def __init__(self):
         self.ollama_url = config.OLLAMA_BASE_URL
-        self.model_name = config.OLLAMA_MODEL
+        self.model_name = "phi3:mini"
         self.conversation_history = {}
     
     def _call_ollama(self, prompt: str, system_prompt: str = None) -> str:
         """Make API call to Ollama."""
         try:
             payload = {
-                "model": self.model_name,
+                "model": "phi3:mini",
                 "prompt": prompt,
                 "stream": False,
                 "options": {
                     "temperature": 0.7,
-                    "top_p": 0.9,
-                    "max_tokens": 500
+                    "num_predict": 150
                 }
             }
             
@@ -35,7 +34,7 @@ class ProcurementLLMAgent:
             response = requests.post(
                 f"{self.ollama_url}/api/generate",
                 json=payload,
-                timeout=30
+                timeout=60
             )
             
             if response.status_code == 200:
@@ -53,7 +52,7 @@ class ProcurementLLMAgent:
                                       input_data: Dict[str, Any]) -> str:
         """Generate natural language explanation of prediction and SHAP results."""
         
-        system_prompt = """You are an expert procurement risk analyst. Explain model predictions and SHAP feature importance in clear, business-friendly language. Focus on actionable insights for procurement professionals."""
+        system_prompt = "You are a procurement risk expert. Give brief, actionable advice."
         
         # Prepare context
         risk_level = prediction_result.get('prediction', 'unknown')
@@ -63,31 +62,11 @@ class ProcurementLLMAgent:
         top_positive = shap_explanation.get('top_positive', {})
         top_negative = shap_explanation.get('top_negative', {})
         
-        prompt = f"""
-Analyze this procurement risk prediction:
+        prompt = f"""Risk Level: {risk_level.upper()} ({confidence:.0%} confidence)
+Industry: {input_data.get('industry', 'Unknown')}
+Top Risk Factors: {', '.join(list(top_negative.keys())[:2])}
 
-PREDICTION RESULTS:
-- Risk Level: {risk_level.upper()}
-- Confidence: {confidence:.1%}
-
-SUPPLIER DETAILS:
-- Annual Revenue: ${input_data.get('annual_revenue', 0):,}
-- Industry: {input_data.get('industry', 'Unknown')}
-- Region: {input_data.get('region', 'Unknown')}
-- Relationship Years: {input_data.get('relationship_years', 0)}
-
-KEY RISK FACTORS (SHAP Analysis):
-Risk Increasing Factors: {', '.join(list(top_negative.keys())[:3])}
-Risk Decreasing Factors: {', '.join(list(top_positive.keys())[:3])}
-
-Please provide:
-1. A clear explanation of why this risk level was predicted
-2. The most important factors driving this assessment
-3. Specific, actionable recommendations to mitigate risks
-4. Next steps for procurement team
-
-Keep response concise and business-focused (under 300 words).
-"""
+Provide 3 specific recommendations to reduce procurement risk:"""
         
         return self._call_ollama(prompt, system_prompt)
     
@@ -96,29 +75,18 @@ Keep response concise and business-focused (under 300 words).
                                input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate structured recommendations based on prediction and SHAP analysis."""
         
-        system_prompt = """You are a procurement strategy consultant. Provide specific, actionable recommendations based on risk analysis. Structure your response as clear action items."""
+        system_prompt = "You are a procurement consultant. Give brief, specific recommendations."
         
         risk_level = prediction_result.get('prediction', 'unknown')
         top_negative = shap_explanation.get('top_negative', {})
         
-        prompt = f"""
-Based on this {risk_level.upper()} risk supplier assessment, provide specific recommendations:
+        prompt = f"""{risk_level.upper()} risk supplier in {input_data.get('industry', 'Unknown')} industry.
+Main issues: {', '.join(list(top_negative.keys())[:2])}
 
-TOP RISK FACTORS:
-{json.dumps(top_negative, indent=2)}
-
-SUPPLIER CONTEXT:
-- Industry: {input_data.get('industry', 'Unknown')}
-- Contract Value: ${input_data.get('contract_value', 0):,}
-- Relationship Duration: {input_data.get('relationship_years', 0)} years
-
-Provide 3-5 specific, actionable recommendations in this format:
-1. [Action Item] - [Brief explanation]
-2. [Action Item] - [Brief explanation]
-etc.
-
-Focus on practical steps the procurement team can take immediately.
-"""
+Give 3 actionable recommendations:
+1.
+2.
+3."""
         
         response = self._call_ollama(prompt, system_prompt)
         
@@ -145,7 +113,7 @@ Focus on practical steps the procurement team can take immediately.
                          context: Optional[Dict[str, Any]] = None) -> str:
         """Handle conversational chat with context awareness."""
         
-        system_prompt = """You are an AI procurement risk advisor. You help users understand risk predictions, SHAP explanations, and provide strategic procurement guidance. Be conversational but professional. Keep responses concise and actionable."""
+        system_prompt = "You are a procurement advisor. Give helpful, brief responses about supplier risk management."
         
         # Build context-aware prompt
         context_info = ""
