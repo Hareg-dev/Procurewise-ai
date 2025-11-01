@@ -1,0 +1,6 @@
+supplier_id,annual_revenue,annual_spend,avg_payment_delay_days,contract_value,contract_duration_months,past_disputes,delivery_score,financial_stability_index,relationship_years,credit_score,txn_count,avg_txn_amount,avg_delay,late_ratio,dispute_rate,avg_delivery_quality,clause_risk_score,region,industry,contract_criticality
+TEST_001,1000000,500000,15,250000,12,2,85,0.75,5,720,10,25000,12,0.2,0.1,88,25,North America,IT Services,Medium
+TEST_002,2500000,1200000,25,600000,24,5,70,0.60,8,650,25,48000,20,0.4,0.2,75,45,Europe,Manufacturing,High
+TEST_003,750000,400000,8,180000,18,1,92,0.85,3,780,8,22500,6,0.1,0.05,95,15,Asia-Pacific,Biotech,Low
+TEST_004,500000,300000,45,120000,6,8,55,0.35,2,580,15,20000,35,0.6,0.4,60,65,LATAM,Logistics,High
+TEST_005,3000000,1800000,12,800000,36,3,88,0.90,10,750,20,40000,8,0.15,0.08,90,20,North America,Facilities,Medium
