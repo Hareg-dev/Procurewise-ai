@@ -8,7 +8,7 @@ A scalable machine learning platform for predicting procurement risks using XGBo
 - **Backend:** FastAPI (multi-endpoint API)
 - **ML Stack:** XGBoost, SHAP, MLflow
 - **Database:** SQLite (via SQLAlchemy)
-- **LLM:** Mistral 7B (via Ollama)
+- **LLM:** phi3:mini (via Ollama)
 - **Containerization:** Docker
 
 ## 📁 Project Structure
