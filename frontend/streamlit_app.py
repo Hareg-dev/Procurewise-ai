@@ -650,8 +650,7 @@ def show_ai_recommendations():
                     
                     response = requests.post(
                         f"{API_BASE_URL}/llm/recommendations",
-                        json=rec_data,
-                        timeout=60
+                        json=rec_data
                     )
                 
                 if response.status_code == 200:
@@ -703,8 +702,7 @@ def show_ai_recommendations():
                 with st.spinner("Generating demo recommendations..."):
                     response = requests.post(
                         f"{API_BASE_URL}/llm/recommendations",
-                        json=demo_data,
-                        timeout=30
+                        json=demo_data
                     )
                 
                 if response.status_code == 200:
@@ -762,8 +760,7 @@ def show_chat_assistant():
                     
                     response = requests.post(
                         f"{API_BASE_URL}/llm/chat",
-                        json=chat_data,
-                        timeout=60
+                        json=chat_data
                     )
                 
                 if response.status_code == 200:
