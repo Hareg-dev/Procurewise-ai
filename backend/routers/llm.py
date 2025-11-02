@@ -6,20 +6,11 @@ from pydantic import BaseModel
 from typing import Dict, Any, Optional
 from backend.models.api_models import PredictionInput
 from backend.services.llm_agent import ProcurementLLMAgent
-from backend.services.shap_explainer import SHAPExplainer
-from backend.services.prediction_service import PredictionService
 
 router = APIRouter(prefix="/llm", tags=["llm"])
 
-# Initialize services
+# Initialize LLM agent
 llm_agent = ProcurementLLMAgent()
-try:
-    shap_explainer = SHAPExplainer()
-except Exception as e:
-    print(f"Warning: SHAP explainer initialization failed: {e}")
-    shap_explainer = None
-
-prediction_service = PredictionService()
 
 class ChatMessage(BaseModel):
     """Chat message model."""
@@ -42,26 +33,29 @@ class WhatIfRequest(BaseModel):
 @router.post("/explain-prediction")
 async def explain_prediction_with_llm(input_data: PredictionInput):
     """
-    Generate natural language explanation of prediction using LLM.
+    Generate natural language explanation of prediction using Phi3 model.
     
     Combines model prediction with SHAP analysis for comprehensive explanation.
     """
     try:
+        from src.model_training import predict_risk
+        from backend.services.shap_explainer import SHAPExplainer
+        
         input_dict = input_data.dict()
         
         # Get prediction
-        prediction_result = prediction_service.predict_single(input_data, "llm_session", None)
+        prediction_result = predict_risk(input_dict)
         
         # Get SHAP explanation
-        shap_explanation = shap_explainer.explain_prediction(input_dict)
+        try:
+            shap_explainer = SHAPExplainer()
+            shap_explanation = shap_explainer.explain_prediction(input_dict)
+        except Exception as e:
+            shap_explanation = {"error": f"SHAP analysis failed: {str(e)}"}
         
-        if 'error' in shap_explanation:
-            raise HTTPException(status_code=500, detail=shap_explanation['error'])
-        
-        # Generate LLM explanation
-        # Generate LLM explanation
+        # Generate Phi3 explanation
         llm_explanation = llm_agent.generate_prediction_explanation(
-            prediction_result.__dict__ if hasattr(prediction_result, '__dict__') else prediction_result,
+            prediction_result,
             shap_explanation,
             input_dict
         )
@@ -71,17 +65,18 @@ async def explain_prediction_with_llm(input_data: PredictionInput):
             "data": {
                 "prediction": prediction_result,
                 "shap_explanation": shap_explanation,
-                "llm_explanation": llm_explanation
+                "llm_explanation": llm_explanation,
+                "model": llm_agent.model_name
             }
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate LLM explanation: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Phi3 explanation unavailable: {str(e)}")
 
 @router.post("/recommendations")
 async def generate_recommendations(request: RecommendationRequest):
     """
-    Generate AI-powered recommendations based on prediction and SHAP analysis.
+    Generate Phi3-powered recommendations based on prediction and SHAP analysis.
     
     Returns structured recommendations and action items.
     """
@@ -98,12 +93,12 @@ async def generate_recommendations(request: RecommendationRequest):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate recommendations: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Phi3 recommendations unavailable: {str(e)}")
 
 @router.post("/chat")
 async def chat_with_llm(chat_request: ChatMessage):
     """
-    Interactive chat with LLM about procurement risks and predictions.
+    Interactive chat with Phi3 model about procurement risks and predictions.
     
     Maintains conversation context and provides contextual responses.
     """
@@ -113,8 +108,31 @@ async def chat_with_llm(chat_request: ChatMessage):
         # Get context if requested
         context = None
         if chat_request.include_context:
-            # This would typically include recent predictions, but for now we'll use None
-            context = {}
+            # Get recent predictions from database for this session
+            try:
+                from backend.utils.db import get_db
+                from backend.models.db_models import PredictionHistory
+                from sqlalchemy.orm import Session
+                from sqlalchemy import desc
+                
+                db = next(get_db())
+                recent_prediction = db.query(PredictionHistory).filter(
+                    PredictionHistory.session_id == session_id
+                ).order_by(desc(PredictionHistory.created_at)).first()
+                
+                if recent_prediction:
+                    context = {
+                        "prediction": {
+                            "prediction": recent_prediction.risk_level,
+                            "confidence": recent_prediction.confidence_score
+                        },
+                        "input_data": recent_prediction.input_data,
+                        "shap_explanation": recent_prediction.shap_values or {}
+                    }
+                db.close()
+            except Exception as e:
+                print(f"Error getting context: {e}")
+                context = {}
         
         response = llm_agent.chat_with_context(
             chat_request.message,
@@ -126,17 +144,19 @@ async def chat_with_llm(chat_request: ChatMessage):
             "success": True,
             "data": {
                 "response": response,
-                "session_id": session_id
+                "session_id": session_id,
+                "model": llm_agent.model_name,
+                "has_context": context is not None
             }
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat failed: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Phi3 chat unavailable: {str(e)}")
 
 @router.post("/what-if")
 async def analyze_what_if_scenario(request: WhatIfRequest):
     """
-    Analyze what-if scenarios using LLM.
+    Analyze what-if scenarios using Phi3 model.
     
     Compares original vs modified data and explains potential impact.
     """
@@ -152,12 +172,13 @@ async def analyze_what_if_scenario(request: WhatIfRequest):
             "data": {
                 "analysis": analysis,
                 "changes_detected": len([k for k, v in request.modified_data.items() 
-                                       if request.original_data.get(k) != v])
+                                       if request.original_data.get(k) != v]),
+                "model": llm_agent.model_name
             }
         }
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"What-if analysis failed: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"Phi3 what-if analysis unavailable: {str(e)}")
 
 @router.get("/chat-history/{session_id}")
 async def get_chat_history(session_id: str):
@@ -194,7 +215,8 @@ async def clear_chat_history(session_id: str):
         return {
             "success": True,
             "data": {
-                "message": f"Chat history cleared for session {session_id}"
+                "message": f"Chat history cleared for session {session_id}",
+                "model": llm_agent.model_name
             }
         }
         
@@ -204,32 +226,42 @@ async def clear_chat_history(session_id: str):
 @router.get("/health")
 async def llm_health_check():
     """
-    Check LLM service health and Ollama connectivity.
+    Check Phi3 model health and Ollama connectivity.
     
-    Returns status of Ollama connection and model availability.
+    Returns status of Ollama connection and Phi3 model availability.
     """
     try:
-        # Test Ollama connection with a simple prompt
-        test_response = llm_agent._call_ollama("Hello, are you working?")
+        # Quick Ollama connectivity check without model inference
+        import requests
+        response = requests.get(f"{llm_agent.ollama_url}/api/tags", timeout=5)
         
-        if "Error" in test_response:
-            return {
-                "success": False,
-                "status": "unhealthy",
-                "error": test_response
-            }
-        
-        return {
-            "success": True,
-            "status": "healthy",
-            "ollama_url": llm_agent.ollama_url,
-            "model": llm_agent.model_name,
-            "test_response": test_response[:100] + "..." if len(test_response) > 100 else test_response
-        }
+        if response.status_code == 200:
+            models = response.json().get('models', [])
+            phi3_available = any(llm_agent.model_name in model.get('name', '') for model in models)
+            
+            if phi3_available:
+                return {
+                    "success": True,
+                    "status": "healthy",
+                    "ollama_url": llm_agent.ollama_url,
+                    "model": llm_agent.model_name,
+                    "note": "Model available but may have memory constraints"
+                }
+            else:
+                return {
+                    "success": False,
+                    "status": "model_not_found",
+                    "error": f"{llm_agent.model_name} model not found",
+                    "available_models": [m.get('name') for m in models]
+                }
+        else:
+            raise Exception(f"Ollama API returned status {response.status_code}")
         
     except Exception as e:
         return {
             "success": False,
             "status": "unhealthy",
-            "error": str(e)
+            "error": f"Ollama connection failed: {str(e)}",
+            "model": llm_agent.model_name,
+            "recommendation": "Please ensure Ollama is running and accessible"
         }

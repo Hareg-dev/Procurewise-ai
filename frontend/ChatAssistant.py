@@ -18,7 +18,7 @@ def initialize_chat_session():
         st.session_state.chat_messages = [
             {
                 "role": "assistant",
-                "content": "👋 Hello! I'm your AI procurement assistant powered by Mistral 7B. I can help you analyze risks, interpret predictions, and provide strategic insights. How can I assist you today?",
+                "content": "👋 Hello! I'm your AI procurement assistant powered by Phi3:mini. I can help you analyze risks, interpret predictions, and provide strategic insights. How can I assist you today?",
                 "timestamp": datetime.now()
             }
         ]
@@ -65,8 +65,11 @@ def display_chat_interface():
                 
                 if response["success"]:
                     ai_response = response["data"]["response"]
+                    # Check if this was a fallback response
+                    if "Due to high system load" in ai_response or "quick responses" in ai_response:
+                        ai_response += "\n\n*Note: Phi3:mini is running with reduced capacity due to system constraints.*"
                 else:
-                    ai_response = f"I apologize, but I'm having trouble connecting to my AI backend. Error: {response.get('error', 'Unknown error')}"
+                    ai_response = "🚫 Phi3 model is currently unavailable. Please ensure Ollama is running with 'ollama run phi3:mini'."
                     
             except Exception as e:
                 ai_response = f"I'm currently unable to process your request. Please ensure the backend API is running. Error: {str(e)}"
@@ -236,7 +239,7 @@ def main():
     render_sidebar()
     
     st.markdown("# 💬 AI Chat Assistant")
-    st.markdown("*Powered by Mistral 7B via Ollama*")
+    st.markdown("*Powered by Phi3:mini via Ollama*")
     
     # Initialize chat session
     initialize_chat_session()
@@ -292,7 +295,7 @@ def main():
         **For full functionality, ensure:**
         - ✅ FastAPI backend is running (localhost:8000)
         - ✅ Ollama is installed and running (localhost:11434)
-        - ✅ Mistral 7B model is downloaded in Ollama
+        - ✅ Phi3:mini model is downloaded in Ollama (`ollama pull phi3:mini`)
         
         **Check AI Status** using the button in the sidebar to verify connectivity.
         """)

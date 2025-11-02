@@ -12,19 +12,23 @@ class ProcurementLLMAgent:
     
     def __init__(self):
         self.ollama_url = config.OLLAMA_BASE_URL
-        self.model_name = "phi3:mini"
+        self.model_name = config.OLLAMA_MODEL
         self.conversation_history = {}
     
     def _call_ollama(self, prompt: str, system_prompt: str = None) -> str:
-        """Make API call to Ollama."""
+        """Make API call to Ollama - Phi3 with memory-aware error handling."""
         try:
             payload = {
-                "model": "phi3:mini",
+                "model": self.model_name,
                 "prompt": prompt,
                 "stream": False,
                 "options": {
                     "temperature": 0.7,
-                    "num_predict": 150
+                    "num_predict": 50,
+                    "top_p": 0.9,
+                    "repeat_penalty": 1.1,
+                    "num_ctx": 512,
+                    "num_thread": 1
                 }
             }
             
@@ -34,99 +38,194 @@ class ProcurementLLMAgent:
             response = requests.post(
                 f"{self.ollama_url}/api/generate",
                 json=payload,
-                timeout=60
+                timeout=90
             )
             
             if response.status_code == 200:
-                return response.json().get('response', 'No response generated')
+                result = response.json()
+                if 'error' in result:
+                    error_msg = result['error']
+                    if 'memory' in error_msg.lower() or 'gpu' in error_msg.lower():
+                        raise Exception("Insufficient system memory to load Phi3 model. Please free up memory or restart Ollama.")
+                    else:
+                        raise Exception(f"Ollama error: {error_msg}")
+                return result.get('response', 'No response generated')
             else:
-                return f"Error: Ollama API returned status {response.status_code}"
+                raise Exception(f"Ollama API returned status {response.status_code}")
                 
         except requests.exceptions.ConnectionError:
-            return "Error: Cannot connect to Ollama. Please ensure Ollama is running on localhost:11434"
+            raise Exception("Cannot connect to Ollama. Please ensure Ollama is running and phi3:mini model is available.")
         except Exception as e:
-            return f"Error calling Ollama: {str(e)}"
+            if 'memory' in str(e).lower():
+                raise Exception("Insufficient system memory for Phi3 model. Please free up memory and restart Ollama.")
+            raise Exception(f"Phi3 model error: {str(e)}")
+    
+
     
     def generate_prediction_explanation(self, prediction_result: Dict[str, Any], 
                                       shap_explanation: Dict[str, Any],
                                       input_data: Dict[str, Any]) -> str:
-        """Generate natural language explanation of prediction and SHAP results."""
+        """Generate natural language explanation using Phi3 model only."""
         
-        system_prompt = "You are a procurement risk expert. Give brief, actionable advice."
-        
-        # Prepare context
         risk_level = prediction_result.get('prediction', 'unknown')
         confidence = prediction_result.get('confidence', 0)
         
-        # SHAP insights
+        system_prompt = """You are an expert procurement risk analyst. Explain the risk assessment results in clear, actionable terms. Focus on the key factors driving the risk level and provide specific recommendations."""
+        
+        # Build comprehensive explanation prompt
         top_positive = shap_explanation.get('top_positive', {})
         top_negative = shap_explanation.get('top_negative', {})
         
-        prompt = f"""Risk Level: {risk_level.upper()} ({confidence:.0%} confidence)
-Industry: {input_data.get('industry', 'Unknown')}
-Top Risk Factors: {', '.join(list(top_negative.keys())[:2])}
+        prompt = f"""SUPPLIER RISK ASSESSMENT EXPLANATION:
 
-Provide 3 specific recommendations to reduce procurement risk:"""
+RISK LEVEL: {risk_level.upper()} ({confidence:.1%} confidence)
+
+SUPPLIER PROFILE:
+- Industry: {input_data.get('industry', 'Unknown')}
+- Region: {input_data.get('region', 'Unknown')}
+- Annual Revenue: ${input_data.get('annual_revenue', 0):,}
+- Contract Value: ${input_data.get('contract_value', 0):,}
+- Relationship: {input_data.get('relationship_years', 0)} years
+
+KEY RISK DRIVERS (factors increasing risk):
+{chr(10).join([f'- {k.replace("_", " ").title()}: Impact {v:.3f}' for k, v in list(top_negative.items())[:4]])}
+
+RISK MITIGATORS (factors decreasing risk):
+{chr(10).join([f'- {k.replace("_", " ").title()}: Impact {v:.3f}' for k, v in list(top_positive.items())[:4]])}
+
+PERFORMANCE INDICATORS:
+- Credit Score: {input_data.get('credit_score', 'N/A')}
+- Delivery Score: {input_data.get('delivery_score', 'N/A')}/100
+- Payment Delays: {input_data.get('avg_payment_delay_days', 0)} days average
+- Past Disputes: {input_data.get('past_disputes', 0)}
+
+Provide a comprehensive explanation of this risk assessment, focusing on:
+1. Why this supplier received a {risk_level} risk rating
+2. The most critical factors to monitor
+3. Specific actions to take based on this assessment
+4. Early warning signs to watch for
+
+Keep the explanation practical and actionable for procurement professionals."""
         
-        return self._call_ollama(prompt, system_prompt)
+        try:
+            response = self._call_ollama(prompt, system_prompt)
+            return response
+            
+        except Exception as e:
+            # Provide helpful error message for memory issues
+            if 'memory' in str(e).lower():
+                raise Exception("Phi3:mini model unavailable due to insufficient memory. Try closing other applications or restart your system to free up memory.")
+            raise Exception(f"Phi3 explanation generation failed: {str(e)}")
+    
+
     
     def generate_recommendations(self, prediction_result: Dict[str, Any],
                                shap_explanation: Dict[str, Any],
                                input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Generate structured recommendations based on prediction and SHAP analysis."""
-        
-        system_prompt = "You are a procurement consultant. Give brief, specific recommendations."
+        """Generate structured recommendations using Phi3 model only."""
         
         risk_level = prediction_result.get('prediction', 'unknown')
-        top_negative = shap_explanation.get('top_negative', {})
+        confidence = prediction_result.get('confidence', 0)
         
-        prompt = f"""{risk_level.upper()} risk supplier in {input_data.get('industry', 'Unknown')} industry.
-Main issues: {', '.join(list(top_negative.keys())[:2])}
+        # Build comprehensive context for Phi3
+        system_prompt = """You are an expert procurement risk consultant. Analyze the supplier data and provide specific, actionable recommendations. Focus on practical steps to mitigate identified risks."""
+        
+        # Extract key risk factors
+        top_negative = shap_explanation.get('top_negative', {})
+        top_positive = shap_explanation.get('top_positive', {})
+        
+        # Build detailed prompt with all context
+        prompt = f"""SUPPLIER RISK ANALYSIS:
 
-Give 3 actionable recommendations:
+Risk Level: {risk_level.upper()} ({confidence:.1%} confidence)
+Industry: {input_data.get('industry', 'Unknown')}
+Region: {input_data.get('region', 'Unknown')}
+Contract Value: ${input_data.get('contract_value', 0):,}
+Relationship Duration: {input_data.get('relationship_years', 0)} years
+
+KEY RISK FACTORS (increasing risk):
+{chr(10).join([f'- {k}: {v:.3f}' for k, v in list(top_negative.items())[:3]])}
+
+MITIGATING FACTORS (decreasing risk):
+{chr(10).join([f'- {k}: {v:.3f}' for k, v in list(top_positive.items())[:3]])}
+
+FINANCIAL METRICS:
+- Annual Revenue: ${input_data.get('annual_revenue', 0):,}
+- Credit Score: {input_data.get('credit_score', 0)}
+- Payment Delays: {input_data.get('avg_payment_delay_days', 0)} days avg
+- Dispute Rate: {input_data.get('dispute_rate', 0):.1%}
+
+PERFORMANCE METRICS:
+- Delivery Score: {input_data.get('delivery_score', 0)}/100
+- Quality Score: {input_data.get('avg_delivery_quality', 0)}/100
+- Past Disputes: {input_data.get('past_disputes', 0)}
+
+Provide 4 specific, actionable recommendations to address this supplier's risk profile. Focus on the most impactful risk factors identified above.
+
 1.
 2.
-3."""
+3.
+4."""
         
-        response = self._call_ollama(prompt, system_prompt)
-        
-        # Parse recommendations into structured format
-        recommendations = []
-        lines = response.split('\n')
-        
-        for line in lines:
-            line = line.strip()
-            if line and (line[0].isdigit() or line.startswith('-')):
-                # Clean up the line
-                clean_line = line.lstrip('0123456789.- ').strip()
-                if clean_line:
-                    recommendations.append(clean_line)
-        
-        return {
-            'recommendations': recommendations,
-            'full_response': response,
-            'risk_level': risk_level,
-            'timestamp': datetime.now().isoformat()
-        }
+        try:
+            response = self._call_ollama(prompt, system_prompt)
+            
+            # Parse recommendations into structured format
+            recommendations = []
+            lines = response.split('\n')
+            
+            for line in lines:
+                line = line.strip()
+                if line and (line[0].isdigit() or line.startswith('-')):
+                    # Clean up the line
+                    clean_line = line.lstrip('0123456789.- ').strip()
+                    if clean_line and len(clean_line) > 10:  # Filter out very short responses
+                        recommendations.append(clean_line)
+            
+            return {
+                'recommendations': recommendations,
+                'full_response': response,
+                'risk_level': risk_level,
+                'confidence': confidence,
+                'timestamp': datetime.now().isoformat(),
+                'model': 'phi3:mini'
+            }
+            
+        except Exception as e:
+            # Provide helpful error message for memory issues
+            if 'memory' in str(e).lower():
+                raise Exception("Phi3:mini model unavailable due to insufficient memory. Try closing other applications or restart your system to free up memory.")
+            raise Exception(f"Phi3 recommendation generation failed: {str(e)}")
+    
+
     
     def chat_with_context(self, user_message: str, session_id: str,
                          context: Optional[Dict[str, Any]] = None) -> str:
-        """Handle conversational chat with context awareness."""
+        """Handle conversational chat using Phi3 model only."""
         
-        system_prompt = "You are a procurement advisor. Give helpful, brief responses about supplier risk management."
+        system_prompt = """You are an expert procurement risk management consultant. Provide helpful, specific advice about supplier risk assessment, contract management, and procurement best practices. Use the provided context about recent predictions to give relevant, actionable guidance."""
         
-        # Build context-aware prompt
+        # Build comprehensive context for Phi3
         context_info = ""
         if context:
             if 'prediction' in context:
                 pred = context['prediction']
-                context_info += f"\nCurrent Prediction Context: {pred.get('prediction', 'N/A')} risk (confidence: {pred.get('confidence', 0):.1%})"
+                context_info += f"\nRECENT PREDICTION CONTEXT:"
+                context_info += f"\n- Risk Level: {pred.get('prediction', 'N/A')} ({pred.get('confidence', 0):.1%} confidence)"
+                
+                if 'input_data' in context:
+                    input_data = context['input_data']
+                    context_info += f"\n- Industry: {input_data.get('industry', 'Unknown')}"
+                    context_info += f"\n- Contract Value: ${input_data.get('contract_value', 0):,}"
+                    context_info += f"\n- Credit Score: {input_data.get('credit_score', 'N/A')}"
+                    context_info += f"\n- Delivery Score: {input_data.get('delivery_score', 'N/A')}/100"
+                    context_info += f"\n- Past Disputes: {input_data.get('past_disputes', 'N/A')}"
             
             if 'shap_explanation' in context:
                 shap = context['shap_explanation']
-                top_factors = list(shap.get('top_negative', {}).keys())[:2]
+                top_factors = list(shap.get('top_negative', {}).keys())[:3]
                 if top_factors:
-                    context_info += f"\nKey Risk Factors: {', '.join(top_factors)}"
+                    context_info += f"\n- Key Risk Factors: {', '.join(top_factors)}"
         
         # Get conversation history
         history = self.conversation_history.get(session_id, [])
@@ -134,75 +233,155 @@ Give 3 actionable recommendations:
         # Build conversation context
         conversation_context = ""
         if history:
-            recent_history = history[-4:]  # Last 4 exchanges
+            recent_history = history[-3:]  # Last 3 exchanges for better context
             for exchange in recent_history:
-                conversation_context += f"\nUser: {exchange['user']}\nAssistant: {exchange['assistant']}"
+                conversation_context += f"\nUser: {exchange['user']}"
+                conversation_context += f"\nAssistant: {exchange['assistant']}"
         
-        full_prompt = f"""
-{context_info}
+        # Build comprehensive prompt
+        full_prompt = f"""{context_info}
 
-Previous conversation:
+CONVERSATION HISTORY:
 {conversation_context}
 
-Current user question: {user_message}
+CURRENT USER QUESTION: {user_message}
 
-Provide a helpful, contextual response about procurement risk management.
-"""
+Provide a helpful, specific response about procurement risk management. If the user is asking about the recent prediction, use the context provided above. Give actionable advice and practical recommendations."""
         
-        response = self._call_ollama(full_prompt, system_prompt)
-        
-        # Store conversation
-        if session_id not in self.conversation_history:
-            self.conversation_history[session_id] = []
-        
-        self.conversation_history[session_id].append({
-            'user': user_message,
-            'assistant': response,
-            'timestamp': datetime.now().isoformat()
-        })
-        
-        # Keep only last 10 exchanges
-        if len(self.conversation_history[session_id]) > 10:
-            self.conversation_history[session_id] = self.conversation_history[session_id][-10:]
-        
-        return response
+        try:
+            response = self._call_ollama(full_prompt, system_prompt)
+            
+            # Store conversation
+            if session_id not in self.conversation_history:
+                self.conversation_history[session_id] = []
+            
+            self.conversation_history[session_id].append({
+                'user': user_message,
+                'assistant': response,
+                'timestamp': datetime.now().isoformat()
+            })
+            
+            # Keep only last 10 exchanges
+            if len(self.conversation_history[session_id]) > 10:
+                self.conversation_history[session_id] = self.conversation_history[session_id][-10:]
+            
+            return response
+            
+        except Exception as e:
+            # Provide helpful error message for memory issues
+            if 'memory' in str(e).lower():
+                raise Exception("Phi3:mini model unavailable due to insufficient memory. Try closing other applications or restart your system to free up memory.")
+            elif 'timeout' in str(e).lower() or 'timed out' in str(e).lower():
+                # Return a helpful response instead of failing
+                fallback_response = self._generate_fallback_chat_response(user_message, context)
+                
+                # Store conversation with fallback
+                if session_id not in self.conversation_history:
+                    self.conversation_history[session_id] = []
+                
+                self.conversation_history[session_id].append({
+                    'user': user_message,
+                    'assistant': fallback_response,
+                    'timestamp': datetime.now().isoformat(),
+                    'fallback': True
+                })
+                
+                return fallback_response
+            raise Exception(f"Phi3 chat failed: {str(e)}")
+    
+
     
     def analyze_what_if_scenario(self, original_data: Dict[str, Any],
                                 modified_data: Dict[str, Any],
                                 original_prediction: Dict[str, Any]) -> str:
-        """Analyze what-if scenarios by comparing original and modified inputs."""
+        """Analyze what-if scenarios using Phi3 model only."""
         
-        system_prompt = """You are a procurement analyst helping with scenario planning. Compare original vs modified supplier data and explain the potential impact on risk assessment."""
+        system_prompt = """You are an expert procurement risk analyst specializing in scenario planning. Analyze how proposed changes to supplier parameters would impact risk assessment. Provide specific, actionable insights."""
         
         # Find key differences
         differences = []
         for key, new_value in modified_data.items():
             original_value = original_data.get(key)
             if original_value != new_value:
-                differences.append(f"{key}: {original_value} → {new_value}")
+                differences.append(f"{key.replace('_', ' ').title()}: {original_value} → {new_value}")
         
-        prompt = f"""
-Analyze this what-if scenario for procurement risk:
+        # Build comprehensive what-if analysis prompt
+        prompt = f"""WHAT-IF SCENARIO ANALYSIS:
 
-ORIGINAL PREDICTION: {original_prediction.get('prediction', 'unknown')} risk
+ORIGINAL SUPPLIER ASSESSMENT:
+- Risk Level: {original_prediction.get('prediction', 'unknown').upper()}
+- Confidence: {original_prediction.get('confidence', 0):.1%}
+- Industry: {original_data.get('industry', 'Unknown')}
+- Current Contract Value: ${original_data.get('contract_value', 0):,}
 
 PROPOSED CHANGES:
 {chr(10).join(differences)}
 
-Explain:
-1. How these changes might affect the risk assessment
-2. Which changes would have the most impact
-3. Whether this scenario would likely improve or worsen the risk profile
-4. Additional considerations for implementing these changes
+ORIGINAL KEY METRICS:
+- Credit Score: {original_data.get('credit_score', 'N/A')}
+- Delivery Score: {original_data.get('delivery_score', 'N/A')}/100
+- Payment Delays: {original_data.get('avg_payment_delay_days', 0)} days
+- Past Disputes: {original_data.get('past_disputes', 0)}
+- Financial Stability: {original_data.get('financial_stability_index', 0):.2f}
 
-Keep response focused and under 200 words.
-"""
+Analyze this scenario and provide:
+
+1. **Risk Impact Assessment**: How would these changes likely affect the overall risk level?
+
+2. **Critical Changes**: Which specific changes would have the most significant impact on risk?
+
+3. **Risk Direction**: Would this scenario improve or worsen the risk profile?
+
+4. **Implementation Considerations**: What should be monitored if these changes occur?
+
+5. **Recommended Actions**: Specific steps to take based on this scenario.
+
+Provide a comprehensive but concise analysis focused on practical procurement risk management."""
         
-        return self._call_ollama(prompt, system_prompt)
+        try:
+            response = self._call_ollama(prompt, system_prompt)
+            return response
+            
+        except Exception as e:
+            # Provide helpful error message for memory issues
+            if 'memory' in str(e).lower():
+                raise Exception("Phi3:mini model unavailable due to insufficient memory. Try closing other applications or restart your system to free up memory.")
+            raise Exception(f"Phi3 what-if analysis failed: {str(e)}")
+    
+
     
     def get_conversation_history(self, session_id: str) -> List[Dict[str, Any]]:
         """Get conversation history for a session."""
         return self.conversation_history.get(session_id, [])
+    
+    def _generate_fallback_chat_response(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> str:
+        """Generate fallback response when Phi3 is unavailable."""
+        message_lower = user_message.lower()
+        
+        # Context-aware responses
+        if context and 'prediction' in context:
+            pred = context['prediction']
+            risk_level = pred.get('prediction', 'unknown')
+            confidence = pred.get('confidence', 0)
+            
+            if any(word in message_lower for word in ['risk', 'prediction', 'assessment']):
+                return f"Based on your recent prediction, the supplier has a {risk_level} risk level with {confidence:.1%} confidence. The key factors to monitor include credit score, delivery performance, and payment history. Would you like specific recommendations for managing this risk level?"
+        
+        # General procurement advice
+        if any(word in message_lower for word in ['recommend', 'advice', 'suggest']):
+            return "For effective procurement risk management, I recommend: 1) Regular supplier performance reviews, 2) Diversified supplier base, 3) Clear contract terms with penalties, 4) Financial health monitoring. What specific area would you like to focus on?"
+        
+        if any(word in message_lower for word in ['hello', 'hi', 'help']):
+            return "Hello! I'm your procurement risk assistant. I can help you understand supplier risks, interpret predictions, and provide recommendations. What would you like to know about procurement risk management?"
+        
+        if any(word in message_lower for word in ['credit', 'financial']):
+            return "Credit and financial stability are crucial risk factors. Monitor supplier credit scores, payment history, and financial statements regularly. Consider requiring financial guarantees for high-risk suppliers."
+        
+        if any(word in message_lower for word in ['delivery', 'performance']):
+            return "Delivery performance directly impacts operational risk. Track on-time delivery rates, quality scores, and establish clear SLAs with penalties for poor performance. Consider backup suppliers for critical items."
+        
+        # Default response
+        return "I'm here to help with procurement risk management. Due to high system load, I'm providing quick responses. Ask me about supplier risk factors, contract management, or risk mitigation strategies."
     
     def clear_conversation_history(self, session_id: str):
         """Clear conversation history for a session."""

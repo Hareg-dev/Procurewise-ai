@@ -126,9 +126,10 @@ async def get_session_stats(
         ).count()
         
         # Risk distribution
+        from sqlalchemy import func
         risk_counts = db.query(
             PredictionHistory.risk_level,
-            db.func.count(PredictionHistory.id)
+            func.count(PredictionHistory.id)
         ).filter(
             PredictionHistory.session_id == session_id
         ).group_by(PredictionHistory.risk_level).all()
@@ -137,7 +138,7 @@ async def get_session_stats(
         
         # Average confidence
         avg_confidence = db.query(
-            db.func.avg(PredictionHistory.confidence_score)
+            func.avg(PredictionHistory.confidence_score)
         ).filter(
             PredictionHistory.session_id == session_id
         ).scalar() or 0.0

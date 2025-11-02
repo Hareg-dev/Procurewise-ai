@@ -45,14 +45,17 @@ class PredictionService:
             # Calculate SHAP values
             shap_values = self.explainer.shap_values(X_processed)
             
-            # Convert to feature importance dict
-            if len(shap_values.shape) == 3:  # Multi-class
-                shap_values = shap_values[0]  # Use first class
+            # Handle different SHAP output formats
+            if isinstance(shap_values, list):  # Multi-class output
+                shap_values = shap_values[1] if len(shap_values) > 1 else shap_values[0]  # Use medium risk class
+            
+            if len(shap_values.shape) > 1:
+                shap_values = shap_values[0]  # Get first sample
             
             feature_importance = {}
             for i, feature in enumerate(self.feature_names):
-                if i < len(shap_values[0]):
-                    feature_importance[feature] = float(shap_values[0][i])
+                if i < len(shap_values):
+                    feature_importance[feature] = float(shap_values[i])
             
             return feature_importance
             
@@ -70,31 +73,42 @@ class PredictionService:
         # Make prediction
         result = predict_risk(input_dict)
         
-        # Calculate SHAP values
-        shap_values = self._get_shap_values(input_dict)
+        # Calculate SHAP values (with error handling)
+        try:
+            shap_values = self._get_shap_values(input_dict)
+        except Exception as e:
+            print(f"SHAP calculation failed: {e}")
+            shap_values = {}
         
         processing_time = time.time() - start_time
         
-        # Save to database
-        prediction_record = PredictionHistory(
-            session_id=session_id,
-            prediction_type="single",
-            input_data=input_dict,
-            prediction_result=result,
-            model_version="xgboost_v1",
-            confidence_score=result['confidence'],
-            risk_level=result['prediction'],
-            shap_values=shap_values,
-            processing_time=processing_time
-        )
-        db.add(prediction_record)
-        db.commit()
+        # Save to database (only if db is provided)
+        if db is not None:
+            try:
+                prediction_record = PredictionHistory(
+                    session_id=session_id,
+                    prediction_type="single",
+                    input_data=input_dict,
+                    prediction_result=result,
+                    model_version="xgboost_v1",
+                    confidence_score=result['confidence'],
+                    risk_level=result['prediction'],
+                    shap_values=shap_values,
+                    processing_time=processing_time
+                )
+                db.add(prediction_record)
+                db.commit()
+            except Exception as e:
+                print(f"Database save failed: {e}")
         
-        # Log to MLflow
-        with mlflow.start_run():
-            mlflow.log_param("prediction_type", "single")
-            mlflow.log_metric("confidence", result['confidence'])
-            mlflow.log_metric("processing_time", processing_time)
+        # Log to MLflow (with error handling)
+        try:
+            with mlflow.start_run():
+                mlflow.log_param("prediction_type", "single")
+                mlflow.log_metric("confidence", result['confidence'])
+                mlflow.log_metric("processing_time", processing_time)
+        except Exception as e:
+            print(f"MLflow logging failed: {e}")
         
         return PredictionResponse(
             prediction=result['prediction'],
@@ -132,42 +146,51 @@ class PredictionService:
         
         processing_time = time.time() - start_time
         
-        # Save batch summary
-        batch_summary = BatchPredictionSummary(
-            session_id=session_id,
-            batch_id=batch_id,
-            total_records=total_records,
-            high_risk_count=risk_distribution['high'],
-            medium_risk_count=risk_distribution['medium'],
-            low_risk_count=risk_distribution['low'],
-            avg_confidence=avg_confidence,
-            processing_time=processing_time,
-            file_name=file_name
-        )
-        db.add(batch_summary)
+        # Save to database (only if db is provided)
+        if db is not None:
+            try:
+                # Save batch summary
+                batch_summary = BatchPredictionSummary(
+                    session_id=session_id,
+                    batch_id=batch_id,
+                    total_records=total_records,
+                    high_risk_count=risk_distribution['high'],
+                    medium_risk_count=risk_distribution['medium'],
+                    low_risk_count=risk_distribution['low'],
+                    avg_confidence=avg_confidence,
+                    processing_time=processing_time,
+                    file_name=file_name
+                )
+                db.add(batch_summary)
+                
+                # Save individual predictions (limit to avoid performance issues)
+                for i, (_, row) in enumerate(results_df.iterrows()):
+                    if i < 1000:  # Limit to first 1000 records
+                        prediction_record = PredictionHistory(
+                            session_id=session_id,
+                            prediction_type="batch",
+                            input_data={"supplier_id": row.get('supplier_id', f'Unknown_{i}')},
+                            prediction_result=row.to_dict(),
+                            model_version="xgboost_v1",
+                            confidence_score=row.get('confidence', 0.0),
+                            risk_level=row.get('prediction', 'Error'),
+                            processing_time=processing_time / total_records
+                        )
+                        db.add(prediction_record)
+                
+                db.commit()
+            except Exception as e:
+                print(f"Database save failed: {e}")
         
-        # Save individual predictions
-        for _, row in results_df.iterrows():
-            prediction_record = PredictionHistory(
-                session_id=session_id,
-                prediction_type="batch",
-                input_data={"supplier_id": row.get('supplier_id', 'Unknown')},
-                prediction_result=row.to_dict(),
-                model_version="xgboost_v1",
-                confidence_score=row.get('confidence', 0.0),
-                risk_level=row.get('prediction', 'Error'),
-                processing_time=processing_time / total_records
-            )
-            db.add(prediction_record)
-        
-        db.commit()
-        
-        # Log to MLflow
-        with mlflow.start_run():
-            mlflow.log_param("prediction_type", "batch")
-            mlflow.log_param("total_records", total_records)
-            mlflow.log_metric("avg_confidence", avg_confidence)
-            mlflow.log_metric("processing_time", processing_time)
+        # Log to MLflow (with error handling)
+        try:
+            with mlflow.start_run():
+                mlflow.log_param("prediction_type", "batch")
+                mlflow.log_param("total_records", total_records)
+                mlflow.log_metric("avg_confidence", avg_confidence)
+                mlflow.log_metric("processing_time", processing_time)
+        except Exception as e:
+            print(f"MLflow logging failed: {e}")
         
         return BatchPredictionResponse(
             batch_id=batch_id,

@@ -31,18 +31,35 @@ def render_sidebar():
     with st.sidebar:
         st.markdown("### 🧭 Navigation")
         
-        # API Status
+        # System Status
         try:
             api_client = APIClient()
             health = api_client.health_check()
+            
+            # Check LLM status
+            try:
+                llm_health = api_client._make_request("GET", "/llm/health")
+                llm_status = llm_health.get("success", False)
+            except:
+                llm_status = False
+                
         except Exception as e:
             health = {"status": "error", "error": str(e)}
+            llm_status = False
+        
+        st.markdown("### 🔧 System Status")
         
         if health["status"] == "connected":
-            st.success("🟢 API Connected")
+            st.success("🟢 Backend API")
         else:
-            st.error("🔴 API Disconnected")
+            st.error("🔴 Backend API")
             st.caption(f"Error: {health.get('error', 'Unknown error')}")
+        
+        if llm_status:
+            st.success("🟢 Phi3:mini")
+        else:
+            st.error("🔴 Phi3:mini")
+            st.caption("LLM features unavailable")
         
         st.markdown("---")
         
@@ -66,9 +83,12 @@ def render_sidebar():
         st.markdown("---")
         
         # Session info
-        if hasattr(api_client, 'session_id'):
-            st.markdown("### 📋 Session Info")
-            st.caption(f"Session ID: {api_client.session_id[:8]}...")
+        try:
+            if hasattr(api_client, 'session_id'):
+                st.markdown("### 📋 Session Info")
+                st.caption(f"Session ID: {api_client.session_id[:8]}...")
+        except:
+            pass
 
 def render_footer():
     """Render consistent footer."""
