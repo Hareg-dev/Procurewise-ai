@@ -4,8 +4,14 @@ Advanced Analytics page for comprehensive data analysis and insights.
 import streamlit as st
 import requests
 import pandas as pd
-import plotly.express as px
 from datetime import datetime
+
+# Try to import plotly, use fallback if not available
+try:
+    import plotly.express as px
+    PLOTLY_AVAILABLE = True
+except ImportError:
+    PLOTLY_AVAILABLE = False
 
 API_BASE_URL = "http://localhost:8000"
 

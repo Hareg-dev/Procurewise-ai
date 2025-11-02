@@ -106,16 +106,16 @@ def main():
     elif page == "History & Analytics":
         show_history_analytics()
     elif page == "Advanced Analytics":
-        from frontend.pages.advanced_analytics import show_advanced_analytics
+        from pages.advanced_analytics import show_advanced_analytics
         show_advanced_analytics()
     elif page == "Advanced AI Features":
-        from frontend.pages.llm_advanced import show_llm_advanced
+        from pages.llm_advanced import show_llm_advanced
         show_llm_advanced()
     elif page == "Session Management":
-        from frontend.pages.session_management import show_session_management
+        from pages.session_management import show_session_management
         show_session_management()
     elif page == "API Explorer":
-        from frontend.pages.api_explorer import show_api_explorer
+        from pages.api_explorer import show_api_explorer
         show_api_explorer()
 
 def show_home_page():

@@ -5,6 +5,7 @@ import streamlit as st
 import requests
 import pandas as pd
 import uuid
+from datetime import datetime
 
 API_BASE_URL = "http://localhost:8000"
 
