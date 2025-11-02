@@ -71,7 +71,7 @@ async def explain_prediction_with_llm(input_data: PredictionInput):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Phi3 explanation unavailable: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"TinyLlama explanation unavailable: {str(e)}")
 
 @router.post("/recommendations")
 async def generate_recommendations(request: RecommendationRequest):
@@ -93,7 +93,7 @@ async def generate_recommendations(request: RecommendationRequest):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Phi3 recommendations unavailable: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"TinyLlama recommendations unavailable: {str(e)}")
 
 @router.post("/chat")
 async def chat_with_llm(chat_request: ChatMessage):
@@ -151,7 +151,7 @@ async def chat_with_llm(chat_request: ChatMessage):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Phi3 chat unavailable: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"TinyLlama chat unavailable: {str(e)}")
 
 @router.post("/what-if")
 async def analyze_what_if_scenario(request: WhatIfRequest):
@@ -178,7 +178,7 @@ async def analyze_what_if_scenario(request: WhatIfRequest):
         }
         
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"Phi3 what-if analysis unavailable: {str(e)}")
+        raise HTTPException(status_code=503, detail=f"TinyLlama what-if analysis unavailable: {str(e)}")
 
 @router.get("/chat-history/{session_id}")
 async def get_chat_history(session_id: str):
@@ -226,9 +226,9 @@ async def clear_chat_history(session_id: str):
 @router.get("/health")
 async def llm_health_check():
     """
-    Check Phi3 model health and Ollama connectivity.
+    Check TinyLlama model health and Ollama connectivity.
     
-    Returns status of Ollama connection and Phi3 model availability.
+    Returns status of Ollama connection and TinyLlama model availability.
     """
     try:
         # Quick Ollama connectivity check without model inference
@@ -237,9 +237,9 @@ async def llm_health_check():
         
         if response.status_code == 200:
             models = response.json().get('models', [])
-            phi3_available = any(llm_agent.model_name in model.get('name', '') for model in models)
+            tinyllama_available = any(llm_agent.model_name in model.get('name', '') for model in models)
             
-            if phi3_available:
+            if tinyllama_available:
                 return {
                     "success": True,
                     "status": "healthy",

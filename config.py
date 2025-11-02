@@ -64,5 +64,5 @@ STREAMLIT_PORT = 8501
 
 # Ollama settings
 OLLAMA_BASE_URL = "http://localhost:11434"
-OLLAMA_MODEL = "phi3:mini"
+OLLAMA_MODEL = "tinyllama:latest"
 OLLAMA_TIMEOUT = None  # No timeout for LLM responses (keep-alive)

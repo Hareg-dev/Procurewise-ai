@@ -17,13 +17,15 @@ class ProcurementLLMAgent:
         self.model_name = config.OLLAMA_MODEL
         self.conversation_history = {}
 
-        # Initialize LangChain Ollama LLM with extended timeout
+        # Initialize LangChain Ollama LLM optimized for TinyLlama
         self.llm = Ollama(
             model=self.model_name,
             base_url=self.ollama_url,
-            temperature=0.7,
-            num_ctx=512,
-            num_predict=50,
+            temperature=0.8,
+            num_ctx=2048,  # Appropriate context for TinyLlama
+            num_predict=512,  # Reasonable prediction length for TinyLlama
+            top_p=0.95,
+            repeat_penalty=1.05,
             timeout=config.OLLAMA_TIMEOUT
         )
     
@@ -35,17 +37,34 @@ class ProcurementLLMAgent:
                 messages.append(SystemMessage(content=system_prompt))
             messages.append(HumanMessage(content=prompt))
             
-            result = self.llm.invoke(messages)
+            # Use invoke with TinyLlama-optimized parameters
+            result = self.llm.invoke(
+                messages,
+                config={
+                    "configurable": {
+                        "num_predict": 512,  # Reasonable length for TinyLlama
+                        "temperature": 0.8,
+                        "top_p": 0.95,
+                        "repeat_penalty": 1.05
+                    }
+                }
+            )
             
             # LangChain returns a message object with .content
-            return result.content if hasattr(result, 'content') else str(result)
+            response = result.content if hasattr(result, 'content') else str(result)
+            
+            # Ensure we have a complete response
+            if not response or len(response.strip()) < 10:
+                raise Exception("Received incomplete or empty response from model")
+            
+            return response.strip()
         
         except Exception as e:
             err_msg = str(e).lower()
             if 'memory' in err_msg or 'gpu' in err_msg:
-                raise Exception("Insufficient memory to load Phi3:mini model. Please free memory or restart Ollama.")
+                raise Exception("Insufficient memory to load TinyLlama model. Please free memory or restart Ollama.")
             elif 'connection' in err_msg:
-                raise Exception("Cannot connect to Ollama. Ensure Ollama is running and phi3:mini model is available.")
+                raise Exception("Cannot connect to Ollama. Ensure Ollama is running and tinyllama:latest model is available.")
             elif 'timeout' in err_msg:
                 return "The model is taking too long to respond. Please try again shortly."
             else:
@@ -100,7 +119,7 @@ Keep the explanation practical and actionable for procurement professionals."""
             response = self._call_ollama(prompt, system_prompt)
             return response
         except Exception as e:
-            raise Exception(f"Phi3 explanation generation failed: {str(e)}")
+            raise Exception(f"TinyLlama explanation generation failed: {str(e)}")
 
     def generate_recommendations(self, prediction_result: Dict[str, Any],
                                shap_explanation: Dict[str, Any],
@@ -173,7 +192,7 @@ Provide 4 specific, actionable recommendations to address this supplier's risk p
             }
             
         except Exception as e:
-            raise Exception(f"Phi3 recommendation generation failed: {str(e)}")
+            raise Exception(f"TinyLlama recommendation generation failed: {str(e)}")
 
     def chat_with_context(self, user_message: str, session_id: str,
                          context: Optional[Dict[str, Any]] = None) -> str:
@@ -260,7 +279,7 @@ Provide a helpful, specific response about procurement risk management. If the u
                 })
                 
                 return fallback_response
-            raise Exception(f"Phi3 chat failed: {str(e)}")
+            raise Exception(f"TinyLlama chat failed: {str(e)}")
 
     def analyze_what_if_scenario(self, original_data: Dict[str, Any],
                                 modified_data: Dict[str, Any],
@@ -308,7 +327,7 @@ Provide a comprehensive but concise analysis focused on practical procurement ri
             response = self._call_ollama(prompt, system_prompt)
             return response
         except Exception as e:
-            raise Exception(f"Phi3 what-if analysis failed: {str(e)}")
+            raise Exception(f"TinyLlama what-if analysis failed: {str(e)}")
 
     def _generate_fallback_chat_response(self, user_message: str, context: Optional[Dict[str, Any]] = None) -> str:
         """Generate fallback response when Phi3 is unavailable."""

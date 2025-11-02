@@ -66,7 +66,7 @@ def main():
         st.markdown("### 🧭 Navigation")
         page = st.selectbox(
             "Choose a page:",
-            ["Home", "Single Prediction", "Batch Prediction", "SHAP Analysis", "AI Recommendations", "Chat Assistant", "History & Analytics"]
+            ["Home", "Single Prediction", "Batch Prediction", "SHAP Analysis", "AI Recommendations", "Chat Assistant", "History & Analytics", "Advanced Analytics", "Advanced AI Features", "Session Management", "API Explorer"]
         )
         
         # System Status
@@ -81,9 +81,9 @@ def main():
             
         llm_healthy, llm_info = check_llm_health()
         if llm_healthy:
-            st.success("🟢 Phi3 LLM Online")
+            st.success("🟢 TinyLlama LLM Online")
         else:
-            st.warning("🟡 Phi3 LLM Offline")
+            st.warning("🟡 TinyLlama LLM Offline")
         
         # Session Info
         st.markdown("---")
@@ -105,6 +105,18 @@ def main():
         show_chat_assistant()
     elif page == "History & Analytics":
         show_history_analytics()
+    elif page == "Advanced Analytics":
+        from frontend.pages.advanced_analytics import show_advanced_analytics
+        show_advanced_analytics()
+    elif page == "Advanced AI Features":
+        from frontend.pages.llm_advanced import show_llm_advanced
+        show_llm_advanced()
+    elif page == "Session Management":
+        from frontend.pages.session_management import show_session_management
+        show_session_management()
+    elif page == "API Explorer":
+        from frontend.pages.api_explorer import show_api_explorer
+        show_api_explorer()
 
 def show_home_page():
     st.markdown("## 🏠 Welcome to the Procurement Risk Prediction Platform")
@@ -115,13 +127,16 @@ def show_home_page():
     - **Explainable AI** with SHAP analysis
     - **LLM-powered Recommendations** via Phi3 Mini
     - **Interactive Chat** for procurement insights
+    - **Advanced Analytics** and session management
     """)
     
+    # Core Features
+    st.markdown("### 🚀 Core Features")
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("""
-        ### 🎯 Prediction Services
+        #### 🎯 Prediction Services
         - Single supplier risk assessment
         - Batch CSV processing
         - Real-time confidence scoring
@@ -130,7 +145,7 @@ def show_home_page():
     
     with col2:
         st.markdown("""
-        ### 📊 Explainable AI
+        #### 📊 Explainable AI
         - SHAP feature importance
         - Interactive visualizations
         - Prediction comparisons
@@ -139,11 +154,65 @@ def show_home_page():
     
     with col3:
         st.markdown("""
-        ### 🤖 AI Assistant
+        #### 🤖 AI Assistant
         - Phi3-powered recommendations
         - Conversational interface
         - Context-aware responses
         - What-if scenario analysis
+        """)
+    
+    # Advanced Features
+    st.markdown("### ⚡ Advanced Features")
+    col4, col5, col6 = st.columns(3)
+    
+    with col4:
+        st.markdown("""
+        #### 📈 Advanced Analytics
+        - Session statistics
+        - Risk trend analysis
+        - Batch prediction summaries
+        - Performance metrics
+        """)
+    
+    with col5:
+        st.markdown("""
+        #### 🔧 Session Management
+        - User session tracking
+        - Prediction history
+        - Session control
+        - Data export
+        """)
+    
+    with col6:
+        st.markdown("""
+        #### 🛠️ Developer Tools
+        - API endpoint explorer
+        - Real-time testing
+        - Response inspection
+        - Service health monitoring
+        """)
+    
+    # Quick Start Guide
+    st.markdown("### 🎯 Quick Start Guide")
+    
+    with st.expander("📋 How to Use This Platform"):
+        st.markdown("""
+        **1. Make Predictions:**
+        - Go to "Single Prediction" for individual supplier assessment
+        - Use "Batch Prediction" to upload CSV files for bulk analysis
+        
+        **2. Understand Results:**
+        - Visit "SHAP Analysis" to see feature importance and visualizations
+        - Check "AI Recommendations" for actionable insights
+        
+        **3. Interactive Analysis:**
+        - Use "Chat Assistant" for conversational AI guidance
+        - Try "Advanced AI Features" for what-if scenarios
+        
+        **4. Monitor & Manage:**
+        - View "Advanced Analytics" for comprehensive insights
+        - Manage sessions in "Session Management"
+        - Test APIs in "API Explorer"
         """)
 
 def show_single_prediction():
@@ -616,7 +685,7 @@ def show_shap_analysis():
 
 def show_ai_recommendations():
     st.markdown("# 💡 AI-Powered Recommendations")
-    st.markdown("*Powered by Phi3 Mini - Real AI Analysis*")
+    st.markdown("*Powered by TinyLlama - Real AI Analysis*")
     
     if st.session_state.last_prediction is not None:
         prediction = st.session_state.last_prediction
@@ -658,7 +727,7 @@ def show_ai_recommendations():
                     if result.get("success"):
                         recommendations = result["data"]
                         
-                        st.success("✅ Phi3 AI Recommendations Generated!")
+                        st.success("✅ TinyLlama AI Recommendations Generated!")
                         
                         # Show model info
                         if recommendations.get("model"):
@@ -673,7 +742,7 @@ def show_ai_recommendations():
                         
                         # Full response
                         if recommendations.get("full_response"):
-                            st.markdown("### 🤖 Detailed Phi3 Analysis")
+                            st.markdown("### 🤖 Detailed TinyLlama Analysis")
                             st.markdown(recommendations["full_response"])
                         
                     else:
@@ -684,14 +753,14 @@ def show_ai_recommendations():
             except Exception as e:
                 st.error(f"Error: {str(e)}")
     else:
-        st.info("💡 Make a prediction first to get personalized Phi3 recommendations")
+        st.info("💡 Make a prediction first to get personalized TinyLlama recommendations")
         st.markdown("**Available prediction methods:**")
         st.markdown("- Go to 'Single Prediction' page to analyze one supplier")
         st.markdown("- Go to 'Batch Prediction' page to upload a CSV file")
-        st.markdown("- After making predictions, return here for real AI recommendations from Phi3")
+        st.markdown("- After making predictions, return here for real AI recommendations from TinyLlama")
         
         # Demo recommendations
-        if st.button("🎯 Test Phi3 Recommendations"):
+        if st.button("🎯 Test TinyLlama Recommendations"):
             demo_data = {
                 "prediction_result": {"prediction": "high", "confidence": 0.85},
                 "shap_explanation": {"top_negative": {"payment_delay": -0.3, "delivery_score": -0.2}},
@@ -708,19 +777,19 @@ def show_ai_recommendations():
                 if response.status_code == 200:
                     result = response.json()
                     if result.get("success"):
-                        st.success("✅ Phi3 Demo Recommendations:")
+                        st.success("✅ TinyLlama Demo Recommendations:")
                         st.markdown(result["data"].get("full_response", "No recommendations available"))
                 elif response.status_code == 503:
-                    st.error("🚫 Phi3 model is currently unavailable. Please ensure Ollama is running with 'ollama run phi3:mini'")
+                    st.error("🚫 TinyLlama model is currently unavailable. Please ensure Ollama is running with 'ollama run tinyllama:latest'")
                 else:
                     st.error(f"API Error: {response.status_code}")
                 
             except Exception as e:
-                st.error(f"Error connecting to Phi3: {str(e)}")
+                st.error(f"Error connecting to TinyLlama: {str(e)}")
 
 def show_chat_assistant():
     st.markdown("# 💬 AI Chat Assistant")
-    st.markdown("*Powered by Phi3 Mini - Real AI Conversations*")
+    st.markdown("*Powered by TinyLlama - Real AI Conversations*")
     
     # Initialize chat history
     if "messages" not in st.session_state:
@@ -731,7 +800,7 @@ def show_chat_assistant():
     # Show context if available
     if st.session_state.last_prediction is not None:
         prediction = st.session_state.last_prediction
-        st.info(f"💡 Phi3 Context: Last prediction was {prediction['result'].get('prediction', 'N/A')} risk with {prediction['result'].get('confidence', 0):.1%} confidence - Ask me about it!")
+        st.info(f"💡 TinyLlama Context: Last prediction was {prediction['result'].get('prediction', 'N/A')} risk with {prediction['result'].get('confidence', 0):.1%} confidence - Ask me about it!")
     
     # Display chat history
     for message in st.session_state.messages:
@@ -748,7 +817,7 @@ def show_chat_assistant():
         # Generate AI response
         with st.chat_message("assistant"):
             try:
-                with st.spinner("🤖 Phi3 is thinking..."):
+                with st.spinner("🤖 TinyLlama is thinking..."):
                     # Include prediction context if available
                     include_context = st.session_state.last_prediction is not None
                     
@@ -773,17 +842,17 @@ def show_chat_assistant():
                     else:
                         ai_response = "🚫 Phi3 is having trouble processing your request. Please try again."
                 elif response.status_code == 503:
-                    ai_response = "🚫 Phi3 model is currently unavailable. Please ensure Ollama is running with 'ollama run phi3:mini'."
+                    ai_response = "🚫 TinyLlama model is currently unavailable. Please ensure Ollama is running with 'ollama run tinyllama:latest'."
                 else:
-                    ai_response = f"Phi3 service error (HTTP {response.status_code}). Please check if the backend is running."
+                    ai_response = f"TinyLlama service error (HTTP {response.status_code}). Please check if the backend is running."
                     
             except requests.exceptions.ConnectionError:
-                ai_response = "🚫 Can't connect to Phi3 backend. Please ensure the FastAPI server is running on localhost:8000."
+                ai_response = "🚫 Can't connect to TinyLlama backend. Please ensure the FastAPI server is running on localhost:8000."
             except Exception as e:
                 if "503" in str(e):
-                    ai_response = "🚫 Phi3 model is currently unavailable. Please check Ollama service."
+                    ai_response = "🚫 TinyLlama model is currently unavailable. Please check Ollama service."
                 else:
-                    ai_response = f"Phi3 connection error: {str(e)}"
+                    ai_response = f"TinyLlama connection error: {str(e)}"
             
             st.write(ai_response)
             st.session_state.messages.append({"role": "assistant", "content": ai_response})
